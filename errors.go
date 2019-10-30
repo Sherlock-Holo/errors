@@ -95,7 +95,20 @@ package errors
 import (
 	"fmt"
 	"io"
+	"reflect"
 )
+
+type errIs interface {
+	Is(error) bool
+}
+
+type errAs interface {
+	As(target interface{}) bool
+}
+
+type unwraper interface {
+	Unwrap() error
+}
 
 // New returns an error with the supplied message.
 // New also records the stack trace at the point it was called.
@@ -128,15 +141,15 @@ func (f *fundamental) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			io.WriteString(s, f.msg)
+			_, _ = io.WriteString(s, f.msg)
 			f.stack.Format(s, verb)
 			return
 		}
 		fallthrough
 	case 's':
-		io.WriteString(s, f.msg)
+		_, _ = io.WriteString(s, f.msg)
 	case 'q':
-		fmt.Fprintf(s, "%q", f.msg)
+		_, _ = fmt.Fprintf(s, "%q", f.msg)
 	}
 }
 
@@ -157,21 +170,81 @@ type withStack struct {
 	*stack
 }
 
+func (w *withStack) As(target interface{}) bool {
+	// won't happened
+	/*if target == nil {
+		panic("errors: target cannot be nil")
+	}*/
+
+	err := w.error
+	val := reflect.ValueOf(target)
+	typ := val.Type()
+	if typ.Kind() != reflect.Ptr || val.IsNil() {
+		panic("errors: target must be a non-nil pointer")
+	}
+	if e := typ.Elem(); e.Kind() != reflect.Interface && !e.Implements(errorType) {
+		panic("errors: *target must be interface or implement error")
+	}
+
+	targetType := typ.Elem()
+	for err != nil {
+		if reflect.TypeOf(err).AssignableTo(targetType) {
+			val.Elem().Set(reflect.ValueOf(err))
+			return true
+		}
+		if x, ok := err.(errAs); ok && x.As(target) {
+			return true
+		}
+		err = Unwrap(err)
+	}
+	return false
+}
+
+func (w *withStack) Is(target error) bool {
+	if target == nil {
+		return false
+	}
+
+	err := w.error
+
+	isComparable := reflect.TypeOf(target).Comparable()
+	for {
+		if isComparable && err == target {
+			return true
+		}
+
+		if x, ok := target.(errIs); ok && x.Is(target) {
+			return true
+		}
+
+		if err = Unwrap(target); err == nil {
+			return false
+		}
+	}
+}
+
+func (w *withStack) Unwrap() error {
+	if u, ok := w.error.(unwraper); ok {
+		return u.Unwrap()
+	}
+	return w.error
+}
+
 func (w *withStack) Cause() error { return w.error }
 
 func (w *withStack) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			fmt.Fprintf(s, "%+v", w.Cause())
+			_, _ = fmt.Fprintf(s, "%+v", w.Cause())
 			w.stack.Format(s, verb)
 			return
 		}
 		fallthrough
 	case 's':
-		io.WriteString(s, w.Error())
+		_, _ = io.WriteString(s, w.Error())
 	case 'q':
-		fmt.Fprintf(s, "%q", w.Error())
+		_, _ = fmt.Fprintf(s, "%q", w.Error())
 	}
 }
 
@@ -238,6 +311,66 @@ type withMessage struct {
 	msg   string
 }
 
+func (w *withMessage) As(target interface{}) bool {
+	// won't happened
+	/*if target == nil {
+		panic("errors: target cannot be nil")
+	}*/
+
+	err := w.cause
+	val := reflect.ValueOf(target)
+	typ := val.Type()
+	if typ.Kind() != reflect.Ptr || val.IsNil() {
+		panic("errors: target must be a non-nil pointer")
+	}
+	if e := typ.Elem(); e.Kind() != reflect.Interface && !e.Implements(errorType) {
+		panic("errors: *target must be interface or implement error")
+	}
+
+	targetType := typ.Elem()
+	for err != nil {
+		if reflect.TypeOf(err).AssignableTo(targetType) {
+			val.Elem().Set(reflect.ValueOf(err))
+			return true
+		}
+		if x, ok := err.(errAs); ok && x.As(target) {
+			return true
+		}
+		err = Unwrap(err)
+	}
+	return false
+}
+
+func (w *withMessage) Is(target error) bool {
+	if target == nil {
+		return false
+	}
+
+	err := w.cause
+
+	isComparable := reflect.TypeOf(target).Comparable()
+	for {
+		if isComparable && err == target {
+			return true
+		}
+
+		if x, ok := target.(errIs); ok && x.Is(target) {
+			return true
+		}
+
+		if err = Unwrap(target); err == nil {
+			return false
+		}
+	}
+}
+
+func (w *withMessage) Unwrap() error {
+	if u, ok := w.cause.(unwraper); ok {
+		return u.Unwrap()
+	}
+	return w.cause
+}
+
 func (w *withMessage) Error() string { return w.msg + ": " + w.cause.Error() }
 func (w *withMessage) Cause() error  { return w.cause }
 
@@ -245,13 +378,13 @@ func (w *withMessage) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if s.Flag('+') {
-			fmt.Fprintf(s, "%+v\n", w.Cause())
-			io.WriteString(s, w.msg)
+			_, _ = fmt.Fprintf(s, "%+v\n", w.Cause())
+			_, _ = io.WriteString(s, w.msg)
 			return
 		}
 		fallthrough
 	case 's', 'q':
-		io.WriteString(s, w.Error())
+		_, _ = io.WriteString(s, w.Error())
 	}
 }
 
@@ -280,3 +413,62 @@ func Cause(err error) error {
 	}
 	return err
 }
+
+func Unwrap(err error) error {
+	if u, ok := err.(unwraper); ok {
+		return u.Unwrap()
+	}
+	return nil
+}
+
+func Is(err, target error) bool {
+	if target == nil {
+		return err == target
+	}
+
+	isComparable := reflect.TypeOf(target).Comparable()
+	for {
+		if isComparable && err == target {
+			return true
+		}
+
+		if x, ok := err.(errIs); ok && x.Is(target) {
+			return true
+		}
+
+		if err = Unwrap(err); err == nil {
+			return false
+		}
+	}
+}
+
+func As(err error, target interface{}) bool {
+	// follow std errors
+	if target == nil {
+		panic("errors: target cannot be nil")
+	}
+
+	val := reflect.ValueOf(target)
+	typ := val.Type()
+	if typ.Kind() != reflect.Ptr || val.IsNil() {
+		panic("errors: target must be a non-nil pointer")
+	}
+	if e := typ.Elem(); e.Kind() != reflect.Interface && !e.Implements(errorType) {
+		panic("errors: *target must be interface or implement error")
+	}
+
+	targetType := typ.Elem()
+	for err != nil {
+		if reflect.TypeOf(err).AssignableTo(targetType) {
+			val.Elem().Set(reflect.ValueOf(err))
+			return true
+		}
+		if x, ok := err.(errAs); ok && x.As(target) {
+			return true
+		}
+		err = Unwrap(err)
+	}
+	return false
+}
+
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
