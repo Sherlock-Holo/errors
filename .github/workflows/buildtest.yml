@@ -1,0 +1,25 @@
+name: build test
+
+on: [push]
+
+jobs:
+  build:
+    name: build test
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        go: [1.11, 1.12, 1.13]
+
+    steps:
+      - name: install go
+        uses: actions/setup-go@v1
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: install go
+        run: go mod download
+
+      - name: test
+        run: go test -v ./...
