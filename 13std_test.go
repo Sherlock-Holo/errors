@@ -1,3 +1,5 @@
+// +build go1.13
+
 package errors
 
 import (
@@ -32,16 +34,14 @@ func TestWithMessage_Is_StdCompatibility(t *testing.T) {
 	}
 }
 
-type customError struct {
-	e string
-}
+type customError struct{}
 
-func (c customError) Error() string {
-	return c.e
+func (customError) Error() string {
+	return ""
 }
 
 func TestWithStack_As_StdCompatibility(t *testing.T) {
-	customErr := customError{e: "test"}
+	customErr := customError{}
 	stackErr := WithStack(customErr)
 
 	var ce customError
@@ -55,7 +55,7 @@ func TestWithStack_As_StdCompatibility(t *testing.T) {
 }
 
 func TestWithMessage_As_StdCompatibility(t *testing.T) {
-	customErr := customError{e: "test"}
+	customErr := customError{}
 	msgErr := WithMessage(customErr, "message")
 
 	var ce customError
@@ -87,7 +87,7 @@ func TestUnwrap_StdCompatibility(t *testing.T) {
 }
 
 func TestAs_StdCompatibility(t *testing.T) {
-	err := customError{e: "test"}
+	err := customError{}
 	wrapErr := fmt.Errorf("wrap: %w", err)
 
 	var ce customError
