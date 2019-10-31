@@ -17,6 +17,9 @@ jobs:
         go: [1.11, 1.12, 1.13]
 
     steps:
+      - name: checkout codes
+        uses: actions/checkout@v1
+
       - name: install go
         uses: actions/setup-go@v1
         with:
