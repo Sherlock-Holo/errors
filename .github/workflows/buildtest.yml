@@ -1,6 +1,10 @@
 name: build test
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+      - github-action
 
 jobs:
   build:
