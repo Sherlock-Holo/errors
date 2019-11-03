@@ -97,18 +97,6 @@ import (
 	"io"
 )
 
-type errIs interface {
-	Is(error) bool
-}
-
-type errAs interface {
-	As(target interface{}) bool
-}
-
-type unwraper interface {
-	Unwrap() error
-}
-
 // New returns an error with the supplied message.
 // New also records the stack trace at the point it was called.
 func New(message string) error {
@@ -169,12 +157,7 @@ type withStack struct {
 	*stack
 }
 
-func (w *withStack) Unwrap() error {
-	if u, ok := w.error.(unwraper); ok {
-		return u.Unwrap()
-	}
-	return w.error
-}
+func (w *withStack) Unwrap() error { return w.error }
 
 func (w *withStack) Cause() error { return w.error }
 
@@ -257,15 +240,9 @@ type withMessage struct {
 	msg   string
 }
 
-func (w *withMessage) Unwrap() error {
-	if u, ok := w.cause.(unwraper); ok {
-		return u.Unwrap()
-	}
-	return w.cause
-}
-
 func (w *withMessage) Error() string { return w.msg + ": " + w.cause.Error() }
 func (w *withMessage) Cause() error  { return w.cause }
+func (w *withMessage) Unwrap() error { return w.cause }
 
 func (w *withMessage) Format(s fmt.State, verb rune) {
 	switch verb {
