@@ -10,15 +10,13 @@ jobs:
   build:
     name: build test
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
         go: [1.12, 1.13]
 
     steps:
-      - name: checkout codes
-        uses: actions/checkout@v1
+      - uses: actions/checkout@v1
 
       - name: install go
         uses: actions/setup-go@v1
